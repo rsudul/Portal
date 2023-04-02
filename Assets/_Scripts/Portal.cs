@@ -1,20 +1,21 @@
-using System.Collections;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Portal : MonoBehaviour
+public class Portal : MonoBehaviour, ISceneInjectee
 {
     private RenderTexture rt;
     private bool isWalkingThroughPortal = false;
 
-    private Player player;
-    private PlayerCam playerCam;
+    private Dictionary<Guid, IPortalTraveller> portalTravellers = new Dictionary<Guid, IPortalTraveller>();
+
+    [Inject] private IPlayerCameraProvider playerCamera;
 
     [SerializeField] private bool debug = false;
     [SerializeField] private Camera portalCam;
     [SerializeField] private Portal connectedPortal;
     [SerializeField] private MeshRenderer portalRenderer;
-    [SerializeField] private Vector3 teleportPosition;
+    public Transform portalEntrance;
     [SerializeField] private float nearClipOffset = 0.05f;
     [SerializeField] private float nearClipLimit = 0.2f;
 
@@ -28,32 +29,12 @@ public class Portal : MonoBehaviour
 
     void Start()
     {
-        player = ServiceLocator.GetService<Player>();
-        playerCam = ServiceLocator.GetService<PlayerCam>();
+
     }
 
     void Update()
     {
-        /*Vector3 dir = transform.position - player.transform.position;
-        dir.y = 0.0f;
-
-        connectedPortal.PortalCam.transform.rotation = Quaternion.LookRotation(dir);
-
-        float distance = Mathf.Abs(transform.position.z - player.transform.position.z);
-        if (debug)
-        {
-            Debug.Log("distance: " + distance);
-        }
-
-        Vector3 portalCamTargetPos = connectedPortal.transform.position + (-connectedPortal.PortalCam.transform.forward * distance);
-        portalCamTargetPos.y = connectedPortal.PortalCam.transform.position.y;
-        connectedPortal.PortalCam.transform.position = portalCamTargetPos;
-
-        if (debug)
-        {
-            //Debug.Log("Direction: " + dir);
-            //Debug.DrawLine(connectedPortal.PortalCam.transform.position, connectedPortal.PortalCam.transform.position + (dir * 100.0f), Color.red, 10.0f);
-        }*/
+        HandlePortalTravellers();
     }
 
     void CreateRenderTexture()
@@ -80,10 +61,10 @@ public class Portal : MonoBehaviour
 
         CreateRenderTexture();
 
-        Vector3 portalCamPos = connectedPortal.transform.TransformPoint(transform.InverseTransformPoint(playerCam.transform.position));
+        Vector3 portalCamPos = connectedPortal.transform.TransformPoint(transform.InverseTransformPoint(playerCamera.GetTransform().position));
         connectedPortal.PortalCam.transform.position = portalCamPos;
 
-        connectedPortal.PortalCam.transform.rotation = playerCam.transform.rotation;
+        connectedPortal.PortalCam.transform.rotation = playerCamera.GetTransform().rotation;
 
         SetNearClipPlane();
 
@@ -103,35 +84,85 @@ public class Portal : MonoBehaviour
         if (Mathf.Abs(camSpaceDst) > nearClipLimit)
         {
             Vector4 clipPlaneCameraSpace = new Vector4(camSpaceNormal.x, camSpaceNormal.y, camSpaceNormal.z, camSpaceDst);
-            portalCam.projectionMatrix = playerCam.cam.CalculateObliqueMatrix(clipPlaneCameraSpace);
+            portalCam.projectionMatrix = playerCamera.GetCamera().CalculateObliqueMatrix(clipPlaneCameraSpace);
         }
         else
         {
-            portalCam.projectionMatrix = playerCam.cam.projectionMatrix;
+            portalCam.projectionMatrix = playerCamera.GetCamera().projectionMatrix;
         }
     }
 
     void OnTriggerEnter(Collider collider)
     {
-        if (collider.transform.CompareTag("Player"))
+        if (collider.TryGetComponent<IPortalTraveller>(out IPortalTraveller portalTraveller))
         {
-            player.Teleport(connectedPortal.PortalCam.transform.position);
+            OnTravellerEnterPortal(portalTraveller);
+        }
+    }
 
-            if (debug)
+    private void OnTriggerExit(Collider collider)
+    {
+        if (collider.TryGetComponent<IPortalTraveller>(out IPortalTraveller portalTraveller))
+        {
+            if (collider.TryGetComponent<IUniqueIDProvider>(out IUniqueIDProvider uniqueIDProvider))
             {
-                Debug.Log(gameObject.name + ": Walking through portal.");
+                if (portalTravellers.ContainsKey(uniqueIDProvider.GetUniqueID()))
+                {
+                    portalTravellers.Remove(uniqueIDProvider.GetUniqueID());
+                }
             }
         }
     }
 
-    private void OnTriggerExit(Collider other)
+    public void HandlePortalTravellers()
     {
-        if (other.transform.CompareTag("Player"))
+        if (portalTravellers.Count == 0)
         {
-            if (debug)
+            return;
+        }
+
+        List<Guid> portalTravellersToRemove = new List<Guid>();
+
+        foreach (KeyValuePair<Guid, IPortalTraveller> portalTraveller in portalTravellers)
+        {
+            Matrix4x4 m = connectedPortal.transform.localToWorldMatrix * transform.worldToLocalMatrix * portalTraveller.Value.GetTransform().localToWorldMatrix;
+
+            Vector3 portalOffset = portalTraveller.Value.GetTransform().position - transform.position;
+            int portalSide = Math.Sign(Vector3.Dot(portalOffset, transform.forward));
+            int portalSideOld = Math.Sign(Vector3.Dot(portalTraveller.Value.GetPortalOffsetOld(), transform.forward));
+
+            if (portalSide != portalSideOld)
             {
-                Debug.Log(gameObject.name + ": Exiting portal.");
+                portalTraveller.Value.Travel(transform, connectedPortal.transform, m.GetColumn(3));
+                connectedPortal.OnTravellerEnterPortal(portalTraveller.Value);
+                portalTravellersToRemove.Add(portalTraveller.Key);
+            }
+            else
+            {
+                portalTraveller.Value.SetPortalOffsetOld(portalOffset);
             }
         }
+
+        for (int i=0; i<portalTravellersToRemove.Count; i++)
+        {
+            portalTravellers.Remove(portalTravellersToRemove[i]);
+        }
+    }
+
+    public void OnTravellerEnterPortal(IPortalTraveller portalTraveller)
+    {
+        if (portalTraveller.GetTransform().TryGetComponent<IUniqueIDProvider>(out IUniqueIDProvider uniqueIDProvider))
+        {
+            if (!portalTravellers.ContainsKey(uniqueIDProvider.GetUniqueID()))
+            {
+                portalTraveller.SetPortalOffsetOld(portalTraveller.GetTransform().position - transform.position);
+                portalTravellers.Add(uniqueIDProvider.GetUniqueID(), portalTraveller);
+            }
+        }
+    }
+
+    public void OnInjected()
+    {
+
     }
 }

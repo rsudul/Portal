@@ -1,17 +1,15 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 [System.Serializable]
 public class MouseLook
 {
-    [SerializeField] private float sensitivityX = 16.0f;
-    [SerializeField] private float sensitivityY = 16.0f;
+    [SerializeField] private float sensitivityX = 2.0f;
+    [SerializeField] private float sensitivityY = 2.0f;
 
     [SerializeField] private float maxLookUp = 90.0f;
     [SerializeField] private float maxLookDown = -90.0f;
 
-    [SerializeField] private float smoothness = 0.1f;
+    [SerializeField] private float smoothness = 16.0f;
 
     private Quaternion targetCharacterRot = Quaternion.identity;
     private Quaternion targetCamRot = Quaternion.identity;
