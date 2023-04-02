@@ -30,7 +30,17 @@ public class PlayerCamera : InstancedSystem, IPlayerCameraProvider, ISceneInject
 
         foreach (Portal portal in portalManager.GetAllPortals())
         {
+            portal.PreRender();
+        }
+
+        foreach (Portal portal in portalManager.GetAllPortals())
+        {
             portal.Render();
+        }
+
+        foreach (Portal portal in portalManager.GetAllPortals())
+        {
+            portal.PostRender();
         }
     }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 [RequireComponent(typeof(IPlayerMovementController))]
@@ -9,6 +10,8 @@ public class Player : InstancedSystem, IPlayerProvider, IPortalTraveller
     private IPlayerMovementController playerMovementController;
 
     private Vector3 portalOffsetOld = Vector3.zero;
+
+    private bool shouldPortalTravellerClone = false;
 
     private void Awake()
     {
@@ -45,5 +48,35 @@ public class Player : InstancedSystem, IPlayerProvider, IPortalTraveller
     public Vector3 GetPortalOffsetOld()
     {
         return portalOffsetOld;
+    }
+
+    public void OnEnterPortal()
+    {
+
+    }
+
+    public void OnExitPortal()
+    {
+
+    }
+
+    public List<Material> GetOriginalMaterials()
+    {
+        return null;
+    }
+
+    public List<Material> GetCloneMaterials()
+    {
+        return null;
+    }
+
+    public void SetClonePosition(Vector3 position, Quaternion rotation)
+    {
+
+    }
+
+    public bool ShouldClone()
+    {
+        return shouldPortalTravellerClone;
     }
 }

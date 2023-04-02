@@ -16,7 +16,7 @@ Shader "Custom/PortalShader"
 			CGPROGRAM
 			#pragma vertex vert
 			#pragma fragment frag
-			#include "UNITYCG.cginc"
+			#include "UnityCG.cginc"
 
 			struct appdata
 			{
